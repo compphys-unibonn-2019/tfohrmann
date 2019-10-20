@@ -1,0 +1,54 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+# Random walks
+## Task
+Write a computer program that generates random walks (RWs) as discussed in the lecture with N steps on a discrete lattice in two dimensions. Determine the average end-to-end length R of the walks as a function of the number of steps N.
+
+## Solution
+Define a function that simulates a single random walk with *N* steps.
+```{r}
+walk <- function(N){
+  # Simulate a single random walk with N steps
+  
+  x <- c(0,0) #starting position
+  # Generate N directions where (0, 1, 2, 3) correspond to (left, down, right, up)
+  steps <- ceiling(runif(N, min=-1, max=3))
+  
+  for(step in steps){
+    # Choosing x/y direction is based on the number being (un)even
+    # Choosing sign is based on the number being greater/smaller than two
+    x <- x + (2*(step%/%2)-1) * c((step+1)%%2, step%%2)
+  }
+  return(x)
+}
+```
+
+Average the end distance to the origin for all numbers of steps up to *N* *n_tries* times (as specified in the code).
+
+```{r}
+N <- 2e2
+n_tries <- 1e2
+
+avg <- rep(0, time=N)
+
+for(f1 in 1:N){
+  tries <- rep(0, time=n_tries)
+  
+  for(f2 in 1:n_tries){
+    tmp <- walk(f1)
+    tries[f2] <- sqrt(tmp[1]**2 + tmp[2]**2)
+  }
+  avg[f1] <- sum(tries)/n_tries
+}
+
+x <- seq(from=1, to=N, by=1)
+sqrt <- 0.9*sqrt(x)
+plot(x=x, y=avg, pch=".", cex=3,
+     main="Average end-to-end length", xlab="number of steps N", ylab="average distance R(N)")
+lines(x=x, y=sqrt, col="red")
+```
+It turns out that the end-to-end length can roughly be parameterised by $$R(N) \approx 0.9 \sqrt{N}$$ (shown in the plot as red line).
