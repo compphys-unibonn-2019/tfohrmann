@@ -1,0 +1,29 @@
+---
+title: "Example 2_5_1"
+author: "Till Fohrmann"
+date: "10/23/2019"
+output: html_document
+---
+# Example 2.5.1
+
+```{r}
+N = 1e4 #number of generated values
+stop = 25
+
+mean <- rep(0, times = stop)
+var <- rep(0, times = stop)
+
+for(n in 1:stop){
+  M <- matrix(data=runif(N*n), nrow=n, ncol=N)
+  approx <- sqrt(12/n) * (apply(M, MARGIN=2, FUN=sum) - n/2)
+  mean[n] <- mean(approx)
+  var[n] <- var(approx)
+}
+
+n <- c(1:stop)
+plot(n, mean)
+plot(n, var)
+#hist(approx, prob=TRUE)
+#qqnorm(approx)
+```
+
