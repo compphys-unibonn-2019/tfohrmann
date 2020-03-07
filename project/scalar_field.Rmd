@@ -1,0 +1,127 @@
+---
+title: "scalar_field"
+author: "Till Fohrmann"
+date: "3/6/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Set up a space-time lattice
+```{r}
+d_t <- 0.1 #lattice spacing in time
+d_s <- 0.1 #lattice spacing in space
+N <- 1+2 #lattice dimensions
+n_p <- 100 #points per dimension
+
+lattice <- array(1.2,dim=rep(n_p,N))
+```
+
+##Define the field, particle and change in action
+```{r}
+lambda <- 0
+mu <- 1
+
+sp_contribution <- function(lattice, x, d_s, d_t, delta, mu){
+  point <- lattice[x[1],x[2],x[3]]
+  tmp <- 0
+  
+  #Derivatives
+  #Time
+  tmp <- tmp + (point-lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1])^2 #before
+  tmp <- tmp + (lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1]-point)^2 #after
+  tmp <- tmp/(d_t)^2
+  #x-Direction
+  tmp <- tmp + (point-lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]])^2
+  tmp <- tmp + (lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]]-point)^2
+  tmp <- tmp/(d_s)^2
+  #y-Direction
+  tmp <- tmp + (point-lattice[x[1],(x[2]-2)%%dim(lattice)[2]+1,x[3]])^2
+  tmp <- tmp + (lattice[x[1],x[2]%%dim(lattice)[2]+1,x[3]]-point)^2
+  tmp <- tmp/(d_s)^2
+  
+  tmp <- tmp/2
+  
+  #Mass
+  tmp <- tmp - mu^2/2 * point^2
+  
+  #Field
+  tmp <- tmp - lambda/24 * point^2
+  
+  return(tmp)
+}
+```
+
+```{r}
+field_sweep <- function(lattice, d_s, d_t, delta, mu){
+  proposal <- lattice
+  N <- dim(lattice)[1]
+  AR <- 0
+  w <- 1e-4 #width of uniform distr.
+  
+  for(t in c(1,N)){
+    for(x in c(1,N)){
+      for(y in c(1,N)){
+        proposal[t,x,y] <- proposal[t,x,y] + runif(1,-w,w)
+        
+        S_before <- sp_contribution(lattice, c(t,x,y), d_s, d_t, delta, mu)
+        S_after <- sp_contribution(proposal, c(t,x,y), d_s, d_t, delta, mu)
+        del_S <- S_after - S_before
+        
+        if(runif(1) < exp(-del_S)){
+          lattice[t,x,y] <- proposal[t,x,y]
+          AR <- AR + 1
+        }
+        else
+          proposal[t,x,y] <- lattice[t,x,y]
+      }
+    }
+  }
+  return(AR/N^2)
+}
+```
+
+```{r}
+AR <- 0
+N <- 1
+for(i in rep(1,N)){
+  AR <- AR + field_sweep(lattice, d_s, d_t, delta, mu)/N
+}
+
+print(AR*100)
+#heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
+```
+
+
+
+
+# Tests
+```{r}
+tmp <- array(data=c(1,2,3,4,5,6,7,8,9),dim=c(3,3))
+ 
+roll <- function(x, d=1, n=1){
+  if(n == 0)
+    return(x)
+  
+  rolled_arr <- array(dim=dim(x))
+
+  if(d==1){
+    rolled_arr[n,] <- tail(x,n)
+    rolled_arr[-n,] <- head(x,-n) 
+  }
+  
+  
+  return(rolled_arr)
+}
+
+print(tmp[-4,])
+print(tail(tmp,-1))
+
+```
+
+```{r}
+(3-2)%%3+1
+```
+

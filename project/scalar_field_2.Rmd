@@ -1,0 +1,120 @@
+---
+title: "scalar_field"
+author: "Till Fohrmann"
+date: "3/6/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Function definitions
+```{r}
+sp_contribution <- function(lattice, x, mass, field, zeta){
+  point <- lattice[x[1],x[2],x[3]]
+  tmp <- 0
+  
+  #Interacting
+  #Time
+  tmp <- tmp + point * lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1] #before
+  tmp <- tmp + point * lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1] #after
+  tmp <- -2.0*mass*zeta * tmp
+  #x-Direction
+  tmp <- tmp + point * lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]]
+  tmp <- tmp + point * lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]]
+  tmp <- -2.0*mass/zeta * tmp
+  #y-Direction
+  tmp <- tmp + point * lattice[x[1],(x[2]-2)%%dim(lattice)[2]+1,x[3]]
+  tmp <- tmp + point * lattice[x[1],x[2]%%dim(lattice)[2]+1,x[3]]
+  tmp <- -2.0*mass/zeta * tmp
+  
+  #Non-interacting
+  tmp <- tmp + (1-2*field) * point^2 + field * point^4
+  
+  return(tmp)
+}
+
+field_sweep <- function(lattice, mass, field, zeta){
+  proposal <- lattice
+  N <- dim(lattice)[1]
+  AR <- 0
+  w <- 1 #width of uniform distr.
+  
+  for(t in c(1,N)){
+    for(x in c(1,N)){
+      for(y in c(1,N)){
+        proposal[t,x,y] <- proposal[t,x,y] + runif(n=1, min=-w, max=w)
+        
+        S_before <- sp_contribution(lattice, c(t,x,y), mass, field, zeta)
+        S_after <- sp_contribution(proposal, c(t,x,y), mass, field, zeta)
+        del_S <- S_after - S_before
+        
+        if(runif(1) < exp(-del_S)){
+          lattice[t,x,y] <- proposal[t,x,y]
+          AR <- AR + 1
+        }
+        else
+          proposal[t,x,y] <- lattice[t,x,y]
+      }
+    }
+  }
+  return(AR/N^2)
+}
+```
+
+
+##Set up a space-time lattice
+```{r}
+mass <- 1
+field <- 0
+zeta <- 1
+
+n_p <- 100 #points per dimension
+
+lattice <- array(1.,dim=rep(n_p,3))
+```
+
+```{r}
+AR <- 0
+N <- 10
+for(i in rep(1,N)){
+  AR <- AR + field_sweep(lattice, mass, field, zeta)/N
+}
+
+#print(lattice[1,,])
+heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
+```
+
+
+
+
+# Tests
+```{r}
+tmp <- array(data=c(1,2,3,4,5,6,7,8,9),dim=c(3,3))
+ 
+roll <- function(x, d=1, n=1){
+  if(n == 0)
+    return(x)
+  
+  rolled_arr <- array(dim=dim(x))
+
+  if(d==1){
+    rolled_arr[n,] <- tail(x,n)
+    rolled_arr[-n,] <- head(x,-n) 
+  }
+  
+  
+  return(rolled_arr)
+}
+
+print(tmp[-4,])
+print(tail(tmp,-1))
+
+```
+
+```{r}
+(3-2)%%3+1
+```
+
