@@ -1,11 +1,10 @@
 ---
-title: "Example 2_5_1"
+title: "Distributions and Measurements of Distributions"
 author: "Till Fohrmann"
 date: "10/23/2019"
 output: html_document
 ---
-# Example 2.5.1
-
+## Implementation of example 2.5.1
 ```{r}
 N = 1e4 #number of generated values
 stop = 25

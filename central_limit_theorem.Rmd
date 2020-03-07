@@ -1,0 +1,91 @@
+---
+title: "4. Central limit theorem"
+author: "Till Fohrmann"
+date: "11/6/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, fig.align="center"}
+# Function to sample from
+f <- function(x,a){
+  return(abs(x)^(-1-1/a)/(2*a))
+}
+
+fc <- function(x,a){
+  res <- array(0, length(x))
+  res[x<=-1] <- 0.5*(-x[x<=-1])^(-1/a)
+  res[x>=1] <- 1 - 0.5*x[x>=1]^(-1/a)
+  return(res)
+}
+
+# Inverse
+fc_inv <- function(y,a){
+  res <- array(0, length(y))
+  res[y<=0.5] <- -(2*y[y<=0.5])^(-a)
+  res[y>0.5] <- (2-2*y[y>0.5])^(-a)
+  return(res)
+}
+
+# Plot Inv(F(x)) against x
+a <- 0.5
+x <- seq(from=-5, to=5, by=0.1)
+y <- fc_inv(fc(x,a),a)
+#y <- fc(x,a)
+plot(x=x, y=y, xlab="x", ylab=expression(paste("F"^"-1","(F(x))")), pch=".")
+```
+
+```{r, fig.align="center"}
+# Use the inverse to sample n points from f(x)
+n <- 1e4
+a <- 0.4
+
+inv_trans <- function(n, a){
+  y <- runif(n, min=0.01, max=0.99)
+  return(fc_inv(y,a))
+}
+
+fx_gen <- inv_trans(n,a)
+
+# Values of the target distribution
+x <- seq(-10, 10, 0.1)
+
+hist(fx_gen, probability=TRUE, xlab="x", ylab="Density / f(x)",
+     main="Histogram of sample vs. original distribution")
+lines(x,f(x,a), col="red")
+```
+
+```{r, fig.align="center"}
+n <- 1e6
+k <- 100
+a <- 0.1
+
+# Define an algorithm that samples from S_k
+s_k <- function(n,k,a){
+  res <- array(inv_trans(n*k,a), c(n,k))
+  var <- var(res[1,])
+  res <- apply(res, 1, sum) / sqrt(k * var)
+  return(res)
+}
+
+hist(s_k(n,k,a), probability=TRUE, xlab="x", ylab="Density",
+     main="Histogram of sample vs. normal distribution")
+
+# Values of the target distribution
+x <- seq(-4, 4, 0.01)
+lines(x, dnorm(x, mean=0, sd=1), col="red")
+```
+
+```{r, fig.align="center"}
+n <- 1e6
+k <- 100
+
+#sk_sample <- s_k(n,k,a)
+#qqnorm(hist(sk_sample, (log2(n)+1), probability=TRUE)$density)
+qqnorm(s_k(n,k,0.45), main="QQ Plot for a=0.1")
+qqnorm(s_k(n,k,0.45), main="QQ Plot for a=0.25")
+qqnorm(s_k(n,k,0.45), main="QQ Plot for a=0.45")
+```
