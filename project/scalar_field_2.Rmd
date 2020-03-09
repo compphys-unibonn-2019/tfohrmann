@@ -18,17 +18,14 @@ sp_contribution <- function(lattice, x, mass, field, zeta){
   
   #Interacting
   #Time
-  tmp <- tmp + point * lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1] #before
-  tmp <- tmp + point * lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1] #after
-  tmp <- -2.0*mass*zeta * tmp
+  tmp <- tmp - 2.0*mass*zeta * point * lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]]
+  tmp <- tmp - 2.0*mass*zeta * point * lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]]
   #x-Direction
-  tmp <- tmp + point * lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]]
-  tmp <- tmp + point * lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]]
-  tmp <- -2.0*mass/zeta * tmp
+  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],(x[2]-2)%%dim(lattice)[2]+1,x[3]]
+  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2]%%dim(lattice)[2]+1,x[3]]
   #y-Direction
-  tmp <- tmp + point * lattice[x[1],(x[2]-2)%%dim(lattice)[2]+1,x[3]]
-  tmp <- tmp + point * lattice[x[1],x[2]%%dim(lattice)[2]+1,x[3]]
-  tmp <- -2.0*mass/zeta * tmp
+  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1] #before
+  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1] #after
   
   #Non-interacting
   tmp <- tmp + (1-2*field) * point^2 + field * point^4
@@ -48,43 +45,57 @@ field_sweep <- function(lattice, mass, field, zeta){
         proposal[t,x,y] <- proposal[t,x,y] + runif(n=1, min=-w, max=w)
         
         S_before <- sp_contribution(lattice, c(t,x,y), mass, field, zeta)
+        #S_before <- lat_action(lattice, mass, field, zeta)
         S_after <- sp_contribution(proposal, c(t,x,y), mass, field, zeta)
+        #S_after <- lat_action(proposal, mass, field, zeta)
         del_S <- S_after - S_before
         
         if(runif(1) < exp(-del_S)){
+          print("Änderung")
+          print(lattice[t,x,y]-proposal[t,x,y])
+          print(lat_action(lattice,mass,field,zeta)-lat_action(proposal,mass,field,zeta))
           lattice[t,x,y] <- proposal[t,x,y]
           AR <- AR + 1
+          print(c(t,x,y))
         }
         else
           proposal[t,x,y] <- lattice[t,x,y]
       }
     }
   }
-  return(AR/N^2)
+  return(AR)
 }
 ```
 
 
 ##Set up a space-time lattice
 ```{r}
-mass <- 1
+mass <- 1e5
 field <- 0
 zeta <- 1
 
 n_p <- 100 #points per dimension
 
-lattice <- array(1.,dim=rep(n_p,3))
+#lattice <- array(data=runif(n=n_p^3, min=-1, max=1),dim=rep(n_p,3))
 ```
 
-```{r}
-AR <- 0
-N <- 10
-for(i in rep(1,N)){
-  AR <- AR + field_sweep(lattice, mass, field, zeta)/N
-}
 
-#print(lattice[1,,])
-heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
+```{r}
+lattice <- array(data=seq(1,27),dim=rep(3,3))
+#lattice <- lattice/sum(lattice)
+
+AR <- 0
+N <- 1
+for(i in rep(1,N)){
+  AR <- AR + field_sweep(lattice, mass, field, zeta)
+}
+AR <- AR/N
+
+print(lattice[,,])
+#heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
+```
+```{r}
+lattice[1,1,1]
 ```
 
 
@@ -92,26 +103,69 @@ heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
 
 # Tests
 ```{r}
-tmp <- array(data=c(1,2,3,4,5,6,7,8,9),dim=c(3,3))
+tmp <- array(data=seq(1,27),dim=c(3,3,3))
  
 roll <- function(x, d=1, n=1){
   if(n == 0)
     return(x)
   
+  N <- array(dim(x)[1])
   rolled_arr <- array(dim=dim(x))
-
-  if(d==1){
-    rolled_arr[n,] <- tail(x,n)
-    rolled_arr[-n,] <- head(x,-n) 
+  if(n < 0){
+    n <- abs(n)
+    if(d==1){
+      rolled_arr[seq(1,N-n),,] <- x[seq(n+1,N),,]
+      rolled_arr[seq(N-n+1,N),,] <- x[seq(1,n),,]
+    }
+    else if(d==2){
+      rolled_arr[,seq(1,N-n),] <- x[,seq(n+1,N),]
+      rolled_arr[,seq(N-n+1,N),] <- x[,seq(1,n),]
+    }
+    else{
+      rolled_arr[seq(1,N-n),,] <- x[seq(n+1,N),,]
+      rolled_arr[seq(N-n+1,N),,] <- x[seq(1,n),,]
+    }
   }
-  
+  else{
+    if(d==1){
+      rolled_arr[seq(1+n,N),,] <- x[seq(1,N-n),,]
+      rolled_arr[seq(1,n),,] <- x[seq(N-n+1,N),,]
+    }
+    else if(d==2){
+      rolled_arr[,seq(1+n,N),] <- x[,seq(1,N-n),]
+      rolled_arr[,seq(1,n),] <- x[,seq(N-n+1,N),]
+    }
+    else{
+      rolled_arr[,,seq(1+n,N)] <- x[,,seq(1,N-n)]
+      rolled_arr[,,seq(1,n)] <- x[,,seq(N-n+1,N)]
+    }
+  }
   
   return(rolled_arr)
 }
+#seq(1,2)
+#seq(5)
+#bla <- dim(tmp)[1]
+print(tmp)
+#print(roll(tmp,d=2,n=-1))
+#print(tail(tmp,2))
 
-print(tmp[-4,])
-print(tail(tmp,-1))
+lat_action <- function(lattice, mass, field, zeta){
+  #Interacting
+  #Time
+  action <- -2*mass*zeta * sum(lattice * roll(lattice, d=1, n=1))
+  #x-Direction
+  action <- action - 2*mass/zeta * sum(lattice * roll(lattice, d=2, n=1))
+  #y-Direction
+  action <- action - 2*mass/zeta * sum(lattice * roll(lattice, d=3, n=1))
+  
+  #Non-interacting
+  action <- action + (1-2*field) * sum(lattice^2) + field * sum(lattice^4)
+  
+  return(action)
+}
 
+print(lat_action(tmp, mass, field, zeta))
 ```
 
 ```{r}
