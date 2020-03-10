@@ -114,7 +114,7 @@ n_p <- 32 #points per dimension
 #lattice <- lattice/sum(lattice)
 #saveRDS(lattice, file="./size_32/rndm_init.rds")
 #heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
-lattice <- readRDS("step_20.rds")
+lattice <- readRDS("./size_32/step_20.rds")
 
 AR <- 0 #acceptance ratio
 N <- 20 #number of sweeps
