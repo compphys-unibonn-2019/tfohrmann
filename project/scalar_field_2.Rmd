@@ -13,19 +13,21 @@ knitr::opts_chunk$set(echo = TRUE)
 ##Function definitions
 ```{r}
 sp_contribution <- function(lattice, x, mass, field, zeta){
+  #Calculates the parts of the action that change if the field value at on point changes.
+  
   point <- lattice[x[1],x[2],x[3]]
   tmp <- 0
   
   #Interacting
   #Time
-  tmp <- tmp - 2.0*mass*zeta * point * lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]]
-  tmp <- tmp - 2.0*mass*zeta * point * lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]]
+  tmp <- tmp - 2.0*mass*zeta * point * lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]] #before
+  tmp <- tmp - 2.0*mass*zeta * point * lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]] #after
   #x-Direction
   tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],(x[2]-2)%%dim(lattice)[2]+1,x[3]]
   tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2]%%dim(lattice)[2]+1,x[3]]
   #y-Direction
-  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1] #before
-  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1] #after
+  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1]
+  tmp <- tmp - 2.0*mass/zeta * point * lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1]
   
   #Non-interacting
   tmp <- tmp + (1-2*field) * point^2 + field * point^4
@@ -33,15 +35,19 @@ sp_contribution <- function(lattice, x, mass, field, zeta){
   return(tmp)
 }
 
+
 field_sweep <- function(lattice, mass, field, zeta){
+  #Sequentially updates the lattice.
+  
   proposal <- lattice
   N <- dim(lattice)[1]
-  AR <- 0
+  AR <- 0 #acceptance ratio
   w <- 1 #width of uniform distr.
   
-  for(t in c(1,N)){
-    for(x in c(1,N)){
-      for(y in c(1,N)){
+  
+  for(t in seq(1,N)){
+    for(x in seq(1,N)){
+      for(y in seq(1,N)){
         proposal[t,x,y] <- proposal[t,x,y] + runif(n=1, min=-w, max=w)
         
         S_before <- sp_contribution(lattice, c(t,x,y), mass, field, zeta)
@@ -50,20 +56,42 @@ field_sweep <- function(lattice, mass, field, zeta){
         #S_after <- lat_action(proposal, mass, field, zeta)
         del_S <- S_after - S_before
         
+        #Accept-Reject-Step
         if(runif(1) < exp(-del_S)){
-          print("Änderung")
-          print(lattice[t,x,y]-proposal[t,x,y])
-          print(lat_action(lattice,mass,field,zeta)-lat_action(proposal,mass,field,zeta))
           lattice[t,x,y] <- proposal[t,x,y]
           AR <- AR + 1
-          print(c(t,x,y))
         }
         else
           proposal[t,x,y] <- lattice[t,x,y]
       }
     }
   }
-  return(AR)
+  return(list("lattice"=lattice, "AR"=AR/N^3))
+}
+
+
+two_point <- function(lattice, mass, field, zeta, d_t){
+  #Calculates the two-point-function for a given delta t on a given lattice instance.
+  
+  tmp <- 0
+  N <- dim(lattice)[1]
+  
+  for(t_0 in seq(1,N)){
+    for(x in seq(1,N)){
+      for(y in seq(1,N)){
+        tmp <- tmp + lattice[t_0,x,y] * lattice[(t_0-1+d_t)%%N+1,x,y]
+      }
+    }
+  }
+  return(tmp / N^3)
+}
+
+
+eff_mass <- function(corr){
+  #Calculates the effective mass for all time steps.
+  
+  N <- length(corr)
+  return(log(corr[1:N-1]/tail(corr,N-1)))
 }
 ```
 
@@ -74,30 +102,50 @@ mass <- 1e5
 field <- 0
 zeta <- 1
 
-n_p <- 100 #points per dimension
+n_p <- 32 #points per dimension
 
 #lattice <- array(data=runif(n=n_p^3, min=-1, max=1),dim=rep(n_p,3))
 ```
 
 
+##Perform N sweeps of the lattice
 ```{r}
-lattice <- array(data=seq(1,27),dim=rep(3,3))
+#lattice <- array(data=runif(n=n_p^3,min=-1,max=1),dim=rep(n_p,3))
 #lattice <- lattice/sum(lattice)
+#saveRDS(lattice, file="./size_32/rndm_init.rds")
+#heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
+lattice <- readRDS("step_20.rds")
 
-AR <- 0
-N <- 1
-for(i in rep(1,N)){
-  AR <- AR + field_sweep(lattice, mass, field, zeta)
+AR <- 0 #acceptance ratio
+N <- 20 #number of sweeps
+for(i in seq(1,N)){
+  sweep <- field_sweep(lattice, mass, field, zeta)
+  lattice <- sweep$lattice
+  AR <- AR + sweep$AR
+  saveRDS(lattice, file=paste(c("./size_32/step_", 20+i, ".rds"), collapse = ""))
 }
 AR <- AR/N
 
-print(lattice[,,])
+#print(lattice[,,])
 #heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
 ```
+
+
+##Evolution of simulation steps
 ```{r}
-lattice[1,1,1]
+for(i in seq(1,10,2)){
+  heatmap(x=readRDS(paste(c("./size_32/step_", i, ".rds"), collapse = ""))[5,,], Rowv=NA, Colv=NA, scale="none")
+}
 ```
 
+##Calculate correlator and effective masses
+```{r}
+lattice <- readRDS("./size_32/step_30.rds")
+corr <- as.vector(unlist(lapply(X=seq(0,n_p/2), FUN="two_point", lattice=lattice, mass=mass, field=field, zeta=zeta)))
+print(corr)
+print("Effektive Massen:")
+print(eff_mass(corr))
+```
 
 
 
@@ -167,8 +215,3 @@ lat_action <- function(lattice, mass, field, zeta){
 
 print(lat_action(tmp, mass, field, zeta))
 ```
-
-```{r}
-(3-2)%%3+1
-```
-
