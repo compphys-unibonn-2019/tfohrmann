@@ -13,18 +13,20 @@
 
 double delta_s(double**** lattice, int T, int N, double change, int pos[4], double mass, double field);
 double sweep(double**** lattice, int T, int N, double mass, double field, double w);
-void save_to_txt(double**** lattice, int T, int N, char* name);
+double eval_correlator(double**** lattice, int T, int N, int dt);
+void lattice_to_txt(double**** lattice, int T, int N, char* name);
+void correlator_to_txt(double** correlator, int T, int n_sweeps, char* name);
 
 int main(){
     // Simulation parameters
-    const double mass = 1.0;
+    const double mass = 20.0;
     const double field = 0.0;
     
-    const int N = 16; //size of lattice in "time-direction"
+    const int N = 32; //size of lattice in "time-direction"
     const int T = 32; //size of lattice in "space-direction"
     
-    const double w = 1.0; //width of (uniform) proposal density
-    const int n_sweeps = 30000; //number of sweeps to be calculated in total
+    const double w = 80.0; //width of (uniform) proposal density
+    const int n_sweeps = 10000; //number of sweeps to be calculated in total
     
     
     // Random generator initilisation
@@ -43,13 +45,17 @@ int main(){
     
     // Set up simulation
     double AR = 0.0; //acceptance rate
+    double** correlator = (double**)malloc(n_sweeps * sizeof(double*));
+    for(int i=0; i<n_sweeps; i++){
+        correlator[i] = (double*)malloc((T/2+1) * sizeof(double));
+    }
 
     // Set up lattice:
     double**** lattice = (double****)malloc(T * sizeof(double***));
-    for(int i=0;  i<T;  i++){
+    for(int i=0; i<T; i++){
 		lattice[i] = (double***)malloc(N * sizeof(double**));
         
-		for(int j=0;  j<N;  j++){
+		for(int j=0; j<N; j++){
 			lattice[i][j] = (double**)malloc(N * sizeof(double*));
             
             for(int k=0; k<N; k++){
@@ -59,13 +65,13 @@ int main(){
 	}
     
     
-    // Initilaise hot start:
+    // Initilaise:
     double total = 0;
-    for(int i=0; i<T;  i++)
+    for(int i=0; i<T; i++)
 	{
-		for(int j=0;  j<N;  j++)
+		for(int j=0; j<N; j++)
 		{
-			for(int k=0;  k<N;  k++)
+			for(int k=0; k<N;  k++)
 			{
                 for(int l=0; l<N; l++)
                 {
@@ -83,28 +89,40 @@ int main(){
 			{
                 for(int l=0; l<N; l++)
                 {
-                    //lattice[i][j][k][l] /= total;
-                    lattice[i][j][k][l] = 0;
+                    //lattice[i][j][k][l] /= total; //hot start
+                    lattice[i][j][k][l] = 0; //cold start
                 }	
 			}
 		}
 	}
     gsl_rng_free(r);
     
-    /*
+    
     // Thermalise
+    printf("Starting thermalisation!\n");
     for(int i=0; i<100; i++){
         AR += sweep(lattice, T, N, mass, field, w);
     }
     printf("Thermalised!\n");
-    */
+    
     // Perform n_sweeps sweeps of the lattice
-    char name[30];
+    //char name[30];
     for(int i=0; i<n_sweeps; i++){
         AR += sweep(lattice, T, N, mass, field, w);
+        
+        /*
         if(i%100==0){
             sprintf(name, "./m1f0/sweep_%d.txt", i/100);
-            save_to_txt(lattice, T, N, name);
+            lattice_to_txt(lattice, T, N, name);
+        }
+        
+        
+        sprintf(name, "./m1f0/sweep_%d.txt", i+1);
+        lattice_to_txt(lattice, T, N, name);
+        */
+        
+        for(int j=0; j<=T/2; j++){
+            correlator[i][j] = eval_correlator(lattice, T, N, j);
         }
         
         // Fortschrittsanzeige
@@ -115,10 +133,13 @@ int main(){
     printf("\n--- Done ---\n");
     printf("AR: %f\n", AR);
     
-    
+    correlator_to_txt(correlator, T, n_sweeps, "correlator.txt");
     
     return 0;
 }
+
+
+
 
 
 double delta_s(double**** lattice, int T, int N, double change, int pos[4], double mass, double field){
@@ -144,7 +165,7 @@ double delta_s(double**** lattice, int T, int N, double change, int pos[4], doub
     delta += pow(lattice[pos[0]][pos[1]][pos[2]][(pos[3]+1)%N] - sp, 2) /2.0; //after
     
     // Pure Field
-    delta += -pow(mass * sp, 2)/2.0 - field/24.0 * pow(sp, 4);
+    delta += pow(mass * sp, 2)/2.0 + field/24.0 * pow(sp, 4);
     
     
     // Before change:
@@ -166,7 +187,7 @@ double delta_s(double**** lattice, int T, int N, double change, int pos[4], doub
     delta -= pow(lattice[pos[0]][pos[1]][pos[2]][(pos[3]+1)%N] - sp, 2) /2.0; //after
     
     // Pure Field
-    delta -= -pow(mass * sp, 2)/2.0 - field/24.0 * pow(sp, 4);
+    delta -= pow(mass * sp, 2)/2.0 + field/24.0 * pow(sp, 4);
     
     
     return delta;
@@ -221,7 +242,21 @@ double sweep(double**** lattice, int T, int N, double mass, double field, double
     return(AR/(T*pow(N,3)));
 }
 
-void save_to_txt(double**** lattice, int T, int N, char* name){
+double eval_correlator(double**** lattice, int T, int N, int dt){
+    double tmp = 0;
+    for(int t0=0; t0<T; t0++){
+        for(int x=0; x<N; x++){
+            for(int y=0; y<N; y++){
+                for(int z=0; z<N; z++){
+                    tmp += lattice[t0][x][y][z] * lattice[(t0+dt)%T][x][y][z];
+                }
+            }
+        }
+    }
+    return tmp;
+}
+
+void lattice_to_txt(double**** lattice, int T, int N, char* name){
     // Saves a lattice configuration as a series of field points.
     // Open file
 	FILE* output;
@@ -257,4 +292,31 @@ void save_to_txt(double**** lattice, int T, int N, char* name){
 		printf("'%s' written\n", name);
 	}
     */
+}
+
+void correlator_to_txt(double** correlator, int T, int n_sweeps, char* name){
+    // Open file
+	FILE* output;
+	output = fopen(name, "w");
+	if(output == NULL){
+		printf("Couldn't create/open '%s'\n", name);
+		exit(129);
+	}
+    
+    for(int i=0; i<n_sweeps; i++){
+        for(int j=0; j<T/2; j++){
+            fprintf(output, "%f,", correlator[i][j]);
+        }
+        fprintf(output, "%f\n", correlator[i][T-1]);
+    }
+    
+    // Close file
+	if(fclose(output)){
+		printf("'%s' couldn't be closed!\n", name);
+		printf("Exiting program.\n");
+		exit(130);
+	}
+	else{
+		printf("'%s' written\n", name);
+	}
 }
