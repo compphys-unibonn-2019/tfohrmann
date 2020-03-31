@@ -1,7 +1,7 @@
 /*  
- *  Metropolis-Hastings-Algorithm for scalar field theory using the parameters chosen below.
- *  This program will store the lattice as .txt-files.
- *  Compile using: gcc -Wall -pedantic -std=c99 mh.c -o mh -lgsl -lm
+ *  Metropolis-Hastings algorithm for scalar field theory using the parameters chosen below.
+ *  This program will store the lattice or correlators as .txt-files.
+ *  Compile using: gcc -Wall -pedantic -std=c99 mh.c -o mh -lgsl -lm -lgslcblas
  *  Execute with: ./mh
  */
 
@@ -19,14 +19,16 @@ void correlator_to_txt(double** correlator, int T, int n_sweeps, char* name);
 
 int main(){
     // Simulation parameters
-    const double mass = 20.0;
+    const double mass = 0.4;
     const double field = 0.0;
     
-    const int N = 32; //size of lattice in "time-direction"
+    const int N = 16; //size of lattice in "time-direction"
     const int T = 32; //size of lattice in "space-direction"
     
-    const double w = 80.0; //width of (uniform) proposal density
+    const double w = 0.32; //width of (uniform) proposal density
+    const int n_therm = 100; //number of sweeps to thermalise
     const int n_sweeps = 10000; //number of sweeps to be calculated in total
+    const int n_idle = 16; //number of sweeps to prevent autocorrelations
     
     
     // Random generator initilisation
@@ -45,12 +47,14 @@ int main(){
     
     // Set up simulation
     double AR = 0.0; //acceptance rate
+	
+    // Reserve space for the correlator
     double** correlator = (double**)malloc(n_sweeps * sizeof(double*));
     for(int i=0; i<n_sweeps; i++){
         correlator[i] = (double*)malloc((T/2+1) * sizeof(double));
     }
 
-    // Set up lattice:
+    // Reserve space for the lattice
     double**** lattice = (double****)malloc(T * sizeof(double***));
     for(int i=0; i<T; i++){
 		lattice[i] = (double***)malloc(N * sizeof(double**));
@@ -65,7 +69,7 @@ int main(){
 	}
     
     
-    // Initilaise:
+    // Initilaise
     double total = 0;
     for(int i=0; i<T; i++)
 	{
@@ -89,8 +93,8 @@ int main(){
 			{
                 for(int l=0; l<N; l++)
                 {
-                    //lattice[i][j][k][l] /= total; //hot start
-                    lattice[i][j][k][l] = 0; //cold start
+                    lattice[i][j][k][l] /= total; //hot start
+                    //lattice[i][j][k][l] = 0; //cold start
                 }	
 			}
 		}
@@ -100,40 +104,41 @@ int main(){
     
     // Thermalise
     printf("Starting thermalisation!\n");
-    for(int i=0; i<100; i++){
+    for(int i=0; i<n_therm; i++){
         AR += sweep(lattice, T, N, mass, field, w);
     }
     printf("Thermalised!\n");
     
     // Perform n_sweeps sweeps of the lattice
-    //char name[30];
+    //char name[30]; //uncomment for storing the whole lattice
     for(int i=0; i<n_sweeps; i++){
         AR += sweep(lattice, T, N, mass, field, w);
         
         /*
-        if(i%100==0){
-            sprintf(name, "./m1f0/sweep_%d.txt", i/100);
-            lattice_to_txt(lattice, T, N, name);
-        }
-        
-        
-        sprintf(name, "./m1f0/sweep_%d.txt", i+1);
+        sprintf(name, "./m2f0/sweep_%d.txt", i+1); //uncomment for storing the whole lattice
         lattice_to_txt(lattice, T, N, name);
         */
         
+	// Idle sweeps to avoid autocorrelations
+	for(int j=0; j<n_idle; j++){
+	    sweep(lattice, T, N, mass, field, w);
+	}
+	
+	// Calculate correlator
         for(int j=0; j<=T/2; j++){
-            correlator[i][j] = eval_correlator(lattice, T, N, j);
+            correlator[i][j] = (eval_correlator(lattice, T, N, j) + eval_correlator(lattice, T, N, T-j))/2.0;
         }
-        
+        correlator[i][T/2+1] = eval_correlator(lattice, T, N, T/2+1);
+	
         // Fortschrittsanzeige
 		printf("\b\b\b\b%3.0lf%%", ((double)i)/((double)n_sweeps)*100.0);
 		fflush(stdout);
     }
-    AR /= (double)(n_sweeps+100);
+    AR /= (double)(n_sweeps+n_therm);
     printf("\n--- Done ---\n");
     printf("AR: %f\n", AR);
     
-    correlator_to_txt(correlator, T, n_sweeps, "correlator.txt");
+    correlator_to_txt(correlator, T/2+1, n_sweeps, "./long_m03f0.txt");
     
     return 0;
 }
@@ -243,6 +248,7 @@ double sweep(double**** lattice, int T, int N, double mass, double field, double
 }
 
 double eval_correlator(double**** lattice, int T, int N, int dt){
+    // Evaluates the correlator for a single lag value dt
     double tmp = 0;
     for(int t0=0; t0<T; t0++){
         for(int x=0; x<N; x++){
@@ -253,7 +259,7 @@ double eval_correlator(double**** lattice, int T, int N, int dt){
             }
         }
     }
-    return tmp;
+    return tmp/(T*pow(N,3));
 }
 
 void lattice_to_txt(double**** lattice, int T, int N, char* name){
@@ -295,6 +301,7 @@ void lattice_to_txt(double**** lattice, int T, int N, char* name){
 }
 
 void correlator_to_txt(double** correlator, int T, int n_sweeps, char* name){
+    // Saves the matrix of correlators to a .txt file.
     // Open file
 	FILE* output;
 	output = fopen(name, "w");
@@ -304,10 +311,10 @@ void correlator_to_txt(double** correlator, int T, int n_sweeps, char* name){
 	}
     
     for(int i=0; i<n_sweeps; i++){
-        for(int j=0; j<T/2; j++){
-            fprintf(output, "%f,", correlator[i][j]);
+        for(int j=0; j<T-1; j++){
+            fprintf(output, "%.17g,", correlator[i][j]);
         }
-        fprintf(output, "%f\n", correlator[i][T-1]);
+        fprintf(output, "%.17g\n", correlator[i][T-1]);
     }
     
     // Close file

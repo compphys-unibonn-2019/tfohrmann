@@ -1,7 +1,6 @@
 ---
-title: "scalar_field"
-author: "Till Fohrmann"
-date: "3/6/2020"
+title: "Scalar field theory on the lattice"
+author: "Johannes Schmidt and Till Fohrmann"
 output: pdf_document
 ---
 
@@ -9,119 +8,77 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-##Set up a space-time lattice
-```{r}
-d_t <- 0.1 #lattice spacing in time
-d_s <- 0.1 #lattice spacing in space
-N <- 1+2 #lattice dimensions
-n_p <- 100 #points per dimension
+This document is intended as a brief showcase of some of the analysis we did in R to produce the results presented in our report.
 
-lattice <- array(1.2,dim=rep(n_p,N))
+```{r,message=FALSE}
+library(Hmisc)
+library(boot)
 ```
 
-##Define the field, particle and change in action
+## Function definitions
 ```{r}
-lambda <- 0
-mu <- 1
+eff_mass <- function(corr){
+  #Calculates the effective mass for all time steps.
+  
+  N <- length(corr)
+  return(log(corr[1:N-1]/tail(corr,N-1)))
+}
 
-sp_contribution <- function(lattice, x, d_s, d_t, delta, mu){
-  point <- lattice[x[1],x[2],x[3]]
-  tmp <- 0
+eff_mass_sym <- function(corr){
+  #Calculates the effective mass for all time steps.
   
-  #Derivatives
-  #Time
-  tmp <- tmp + (point-lattice[x[1],x[2],(x[3]-2)%%dim(lattice)[3]+1])^2 #before
-  tmp <- tmp + (lattice[x[1],x[2],x[3]%%dim(lattice)[3]+1]-point)^2 #after
-  tmp <- tmp/(d_t)^2
-  #x-Direction
-  tmp <- tmp + (point-lattice[(x[1]-2)%%dim(lattice)[1]+1,x[2],x[3]])^2
-  tmp <- tmp + (lattice[x[1]%%dim(lattice)[1]+1,x[2],x[3]]-point)^2
-  tmp <- tmp/(d_s)^2
-  #y-Direction
-  tmp <- tmp + (point-lattice[x[1],(x[2]-2)%%dim(lattice)[2]+1,x[3]])^2
-  tmp <- tmp + (lattice[x[1],x[2]%%dim(lattice)[2]+1,x[3]]-point)^2
-  tmp <- tmp/(d_s)^2
-  
-  tmp <- tmp/2
-  
-  #Mass
-  tmp <- tmp - mu^2/2 * point^2
-  
-  #Field
-  tmp <- tmp - lambda/24 * point^2
-  
-  return(tmp)
+  N <- length(corr)
+  return(acosh((corr[3:N]+corr[1:(N-2)]) / (2*corr[2:(N-1)])))
+}
+
+mean.boot <- function(x, ii){
+  return(apply(X=x[ii,], MARGIN=2, FUN=function(x) mean(x[is.finite(x)])))
+}
+
+meff.boot <- function(x, ii){
+  return(eff_mass_sym(apply(X=x[ii,], MARGIN=2, FUN=mean)))
 }
 ```
 
-```{r}
-field_sweep <- function(lattice, d_s, d_t, delta, mu){
-  proposal <- lattice
-  N <- dim(lattice)[1]
-  AR <- 0
-  w <- 1e-4 #width of uniform distr.
-  
-  for(t in c(1,N)){
-    for(x in c(1,N)){
-      for(y in c(1,N)){
-        proposal[t,x,y] <- proposal[t,x,y] + runif(1,-w,w)
-        
-        S_before <- sp_contribution(lattice, c(t,x,y), d_s, d_t, delta, mu)
-        S_after <- sp_contribution(proposal, c(t,x,y), d_s, d_t, delta, mu)
-        del_S <- S_after - S_before
-        
-        if(runif(1) < exp(-del_S)){
-          lattice[t,x,y] <- proposal[t,x,y]
-          AR <- AR + 1
-        }
-        else
-          proposal[t,x,y] <- lattice[t,x,y]
-      }
-    }
-  }
-  return(AR/N^2)
-}
-```
 
-```{r}
-AR <- 0
-N <- 1
-for(i in rep(1,N)){
-  AR <- AR + field_sweep(lattice, d_s, d_t, delta, mu)/N
-}
-
-print(AR*100)
-#heatmap(x=lattice[1,,], Rowv=NA, Colv=NA, scale="none")
+## Read correlators
+```{r, warning=FALSE}
+correlator <- simplify2array(read.csv("./long_m04f0.txt", header=F))
+correlator <- correlator[1:10000,]
+dim(correlator)
 ```
 
 
+## Bootstrap
+```{r, warning=FALSE}
+boot.res <- boot(data=correlator, statistic=meff.boot, R=4*length(correlator[,1]))
+print(boot.res)
 
-
-# Tests
-```{r}
-tmp <- array(data=c(1,2,3,4,5,6,7,8,9),dim=c(3,3))
- 
-roll <- function(x, d=1, n=1){
-  if(n == 0)
-    return(x)
-  
-  rolled_arr <- array(dim=dim(x))
-
-  if(d==1){
-    rolled_arr[n,] <- tail(x,n)
-    rolled_arr[-n,] <- head(x,-n) 
-  }
-  
-  
-  return(rolled_arr)
-}
-
-print(tmp[-4,])
-print(tail(tmp,-1))
-
+print("Number of bootstrap samples for each time step")
+print(apply(boot.res$t, 2, FUN=function(x) length(x[is.finite(x)])))
 ```
 
+## Evaluation as the library function would do it
 ```{r}
-(3-2)%%3+1
+boot_val <- boot.res$t0
+boot_sd <- apply(X=boot.res$t, MARGIN=2, FUN=function(x) sd(x, na.rm=TRUE))
+errbar(seq(1,length(boot_val)),boot_val, boot_val+boot_sd, boot_val-boot_sd, ann=F)
+title(xlab="time separation", ylab=expression(paste("m"[eff])))
+abline(h=0.4)
 ```
 
+## Evalutation with omitting the NaNs
+```{r}
+#boot.res$t
+boot_val <- apply(X=boot.res$t, MARGIN=2, FUN=function(x) sum(x[is.finite(x)]) / length(x[is.finite(x)]) )
+boot_sd <- apply(X=boot.res$t, MARGIN=2, FUN=function(x) sd(x, na.rm=TRUE))
+errbar(seq(1,length(boot_val)),boot_val, boot_val+boot_sd, boot_val-boot_sd, ann=F)
+title(xlab="time separation", ylab=expression(paste("m"[eff])))
+abline(h=0.4)
+```
+
+## Autocorrelation of the measurment
+```{r}
+acf(correlator[,3], main="Autocorrelation of the two-point function")
+ac <- acf(correlator[,3], plot=FALSE, lag.max=1000)$acf
+```
